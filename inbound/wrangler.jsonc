@@ -1,0 +1,24 @@
+{
+  // Receives customer email for in+…@in.visicomms.com (Email Routing rule
+  // in@in.visicomms.com with subaddressing). Deploy: npm run deploy
+  "name": "visicomms-inbound",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // The Cloudflare account comes from CLOUDFLARE_ACCOUNT_ID (put it in a
+  // git-ignored .env here when one login can see several accounts).
+  "r2_buckets": [{"binding": "MAIL", "bucket_name": "visicomms-mail"}],
+  "queues": {
+    "producers": [{"binding": "RETRY", "queue": "visicomms-inbound-retry"}],
+    "consumers": [
+      {
+        "queue": "visicomms-inbound-retry",
+        "max_batch_size": 10,
+        "max_retries": 20,
+        "dead_letter_queue": "visicomms-inbound-dead"
+      }
+    ]
+  },
+  "vars": {"API_ORIGIN": "https://api.visicomms.com"}
+  // Secret, set with `wrangler secret put WEBHOOK_SECRET`: the same value as
+  // the API's INBOUND_EMAIL_SECRET.
+}

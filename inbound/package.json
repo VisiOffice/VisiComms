@@ -1,0 +1,20 @@
+{
+  "name": "visicomms-inbound",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "postal-mime": "^4.0.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261008.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3",
+    "wrangler": "^4.149.0"
+  }
+}

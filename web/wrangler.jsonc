@@ -1,0 +1,19 @@
+{
+  // The console at app.<your domain>. Deploy: npm run deploy
+  "name": "visicomms-web",
+  // The Cloudflare account comes from CLOUDFLARE_ACCOUNT_ID (put it in a
+  // git-ignored .env here when one login can see several accounts).
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    // The backend's public origin.
+    "API_ORIGIN": "https://api.visicomms.com"
+  },
+  "routes": [{"pattern": "app.visicomms.com", "custom_domain": true}]
+}

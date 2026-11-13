@@ -1,0 +1,7 @@
+bin/
+*.local
+.env
+*.tsbuildinfo
+
+# Real deploy secrets wiring; .kamal/secrets.example is the template.
+.kamal/secrets

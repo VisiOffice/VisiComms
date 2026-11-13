@@ -1,0 +1,7 @@
+# Headers for the console's static files, served by Cloudflare Workers assets.
+# /api/* responses come from the Go API, which sets its own.
+/*
+  Strict-Transport-Security: max-age=63072000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin

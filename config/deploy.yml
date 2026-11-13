@@ -1,0 +1,121 @@
+# Kamal deploy for the VisiComms API: one Go binary plus Postgres on one
+# server. The console (web/) deploys separately to Cloudflare Workers.
+#
+# Set before deploying (see docs/deploy.md):
+#   VISICOMMS_HOST    the server's IP address
+#   VISICOMMS_DOMAIN  visicomms.com (API at api.<domain>, console at app.<domain>)
+service: visicomms
+
+image: regatlas-llc/visicomms
+
+servers:
+  web:
+    hosts:
+      - <%= ENV.fetch("VISICOMMS_HOST") %>
+    # Migrate under a lock, then serve: the binary refuses to start against a
+    # schema it does not match, so a failed migration fails the deploy and the
+    # previous release keeps serving.
+    cmd: serve --migrate
+
+proxy:
+  ssl: true
+  host: api.<%= ENV.fetch("VISICOMMS_DOMAIN") %>
+  app_port: 8080
+  healthcheck:
+    path: /up
+    timeout: 30
+
+registry:
+  server: ghcr.io
+  username: regatlas-llc
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  arch: amd64
+  args:
+    BUILD_SHA: <%= `git rev-parse --short HEAD`.strip %>
+
+env:
+  clear:
+    VISICOMMS_ENV: production
+    PORT: "8080"
+    APP_URL: https://app.<%= ENV.fetch("VISICOMMS_DOMAIN") %>
+    WEBAUTHN_RP_ID: <%= ENV.fetch("VISICOMMS_DOMAIN") %>
+    WEBAUTHN_ORIGINS: https://app.<%= ENV.fetch("VISICOMMS_DOMAIN") %>
+    # The platform's Amazon SES account.
+    AWS_SES_REGION: us-west-2
+    # Delivery, bounce and complaint events: SES configuration set
+    # "visicomms" publishes to an SNS topic (SES_EVENTS_TOPIC_ARN, a secret
+    # because it names the AWS account), which posts to /webhooks/ses.
+    # Hosted: no installation SignalWire project. Each workspace connects its
+    # own (`visicomms signalwire connect`), sealed with VISICOMMS_MASTER_KEY.
+    SIGNALWIRE_PUBLIC_URL: https://api.<%= ENV.fetch("VISICOMMS_DOMAIN") %>
+    # AI calls are answered by GPT-Live; "realtime" switches back. The OpenAI
+    # webhook must be subscribed to the matching event (live.transport.incoming).
+    OPENAI_VOICE_API: live
+    # Notification emails ("VisiComms <notifications@visicomms.com>"). The
+    # domain must be verified in SES us-west-2, with DKIM, before this sends.
+    NOTIFY_FROM: notifications@visicomms.com
+    # Call recordings and voicemails are copied off SignalWire into this
+    # private B2 bucket (S3 API) and deleted a year after the call.
+    RECORDINGS_BUCKET: visicomms-recordings
+    RECORDINGS_S3_ENDPOINT: https://s3.us-west-004.backblazeb2.com
+    RECORDINGS_S3_REGION: us-west-004
+  secret:
+    - DATABASE_URL
+    - INBOUND_EMAIL_SECRET
+    - AWS_SES_ACCESS_KEY_ID
+    - AWS_SES_SECRET_ACCESS_KEY
+    - SES_EVENTS_TOPIC_ARN
+    - VISICOMMS_MASTER_KEY
+    - OPENAI_API_KEY
+    - OPENAI_PROJECT_ID
+    - OPENAI_WEBHOOK_SECRET
+    - RECORDINGS_S3_KEY_ID
+    - RECORDINGS_S3_SECRET
+
+accessories:
+  db:
+    # Pin by digest once chosen, so a re-pulled tag cannot change the database.
+    image: postgres:17
+    host: <%= ENV.fetch("VISICOMMS_HOST") %>
+    port: "127.0.0.1:5432:5432"
+    env:
+      clear:
+        POSTGRES_USER: visicomms
+        POSTGRES_DB: visicomms
+      secret:
+        - POSTGRES_PASSWORD
+    directories:
+      - data:/var/lib/postgresql/data
+
+  # Nightly encrypted backups to Backblaze B2 (deploy/backup, docs/backups.md).
+  # Holds only the age public key: this server cannot read its own backups.
+  backup:
+    image: ghcr.io/regatlas-llc/visicomms-backup:1
+    host: <%= ENV.fetch("VISICOMMS_HOST") %>
+    env:
+      clear:
+        PGHOST: visicomms-db
+        PGUSER: visicomms
+        PGDATABASE: visicomms
+        PGCONNECT_TIMEOUT: "10"
+        BACKUP_AT: "03:00"
+        # One day past the 30-day Object Lock, so a copy is never pruned while still locked.
+        BACKUP_KEEP_DAYS: "31"
+        BACKUP_DEST: backup:visicomms-backup/db
+        BACKUP_AGE_RECIPIENT: age18xv9ep7830el278laacjyzwwfa98y22udxhyamtt2t8t8vs4pdeqxe85tq
+        # B2's S3 API. rclone's native B2 backend speaks B2 API v1, which
+        # refuses keys made by the current b2 CLI. Over S3 a delete only hides
+        # a file; the bucket's lifecycle rule ("keep only the last version")
+        # purges hidden files a day later.
+        RCLONE_CONFIG_BACKUP_TYPE: s3
+        RCLONE_CONFIG_BACKUP_PROVIDER: Other
+        RCLONE_CONFIG_BACKUP_ENDPOINT: https://s3.us-west-004.backblazeb2.com
+        RCLONE_CONFIG_BACKUP_NO_CHECK_BUCKET: "true"
+      secret:
+        - PGPASSWORD
+        - RCLONE_CONFIG_BACKUP_ACCESS_KEY_ID
+        - RCLONE_CONFIG_BACKUP_SECRET_ACCESS_KEY
+        - HEARTBEAT_URL

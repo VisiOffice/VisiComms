@@ -1,0 +1,58 @@
+# Local stack: Postgres plus the app. `docker compose up` migrates, then serves.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: visicomms
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-visicomms}
+      POSTGRES_DB: visicomms
+    ports: ["5433:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "visicomms"]
+      interval: 2s
+      retries: 15
+
+  migrate:
+    build: .
+    command: ["migrate"]
+    environment:
+      DATABASE_URL: postgres://visicomms:${POSTGRES_PASSWORD:-visicomms}@postgres:5432/visicomms?sslmode=disable
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgres://visicomms:${POSTGRES_PASSWORD:-visicomms}@postgres:5432/visicomms?sslmode=disable
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-ses}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
+      INBOUND_EMAIL_DOMAIN: ${INBOUND_EMAIL_DOMAIN:-}
+      APP_URL: ${APP_URL:-http://localhost:5173}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
+      WEBAUTHN_ORIGINS: ${WEBAUTHN_ORIGINS:-http://localhost:5173}
+      AWS_SES_ACCESS_KEY_ID: ${AWS_SES_ACCESS_KEY_ID:-}
+      AWS_SES_SECRET_ACCESS_KEY: ${AWS_SES_SECRET_ACCESS_KEY:-}
+      AWS_SES_REGION: ${AWS_SES_REGION:-us-west-2}
+      SES_CONFIGURATION_SET: ${SES_CONFIGURATION_SET:-}
+      SES_EVENTS_TOPIC_ARN: ${SES_EVENTS_TOPIC_ARN:-}
+      INBOUND_EMAIL_SECRET: ${INBOUND_EMAIL_SECRET:-}
+      SIGNALWIRE_SPACE_URL: ${SIGNALWIRE_SPACE_URL:-}
+      SIGNALWIRE_PROJECT_ID: ${SIGNALWIRE_PROJECT_ID:-}
+      SIGNALWIRE_API_TOKEN: ${SIGNALWIRE_API_TOKEN:-}
+      SIGNALWIRE_SIGNING_KEY: ${SIGNALWIRE_SIGNING_KEY:-}
+      SIGNALWIRE_PUBLIC_URL: ${SIGNALWIRE_PUBLIC_URL:-}
+    ports: ["8080:8080"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+  # Optional complete web client, with same-origin API/webhook forwarding.
+  web:
+    profiles: [web]
+    build: ./web
+    ports: ["8081:80"]
+    depends_on: [app]
+
+volumes:
+  pgdata:
